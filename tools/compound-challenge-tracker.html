@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>複利挑戰追蹤器 | Trading Toolkit</title>
+<style>
+  :root {
+    --bg: #0f1115; --card: #181b21; --border: #2a2e37;
+    --text: #e7e9ee; --muted: #9aa1ad; --accent: #4f8cff;
+    --green: #2ecc71; --red: #e74c3c;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'Noto Sans TC', -apple-system, sans-serif;
+    background: var(--bg); color: var(--text);
+    max-width: 560px; margin: 0 auto; padding: 32px 16px 64px;
+    line-height: 1.6;
+  }
+  h1 { font-size: 22px; margin-bottom: 4px; }
+  h2 { font-size: 15px; margin-bottom: 12px; color: var(--muted); font-weight: 600; }
+  .sub { color: var(--muted); font-size: 13px; margin-bottom: 24px; }
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 20px; margin-bottom: 16px; }
+  label { display: block; font-size: 13px; color: var(--muted); margin: 12px 0 4px; }
+  input, select {
+    width: 100%; padding: 10px 12px; font-size: 16px;
+    background: var(--bg); color: var(--text);
+    border: 1px solid var(--border); border-radius: 8px;
+  }
+  input:focus, select:focus { outline: none; border-color: var(--accent); }
+  .row { display: flex; gap: 12px; }
+  .row > div { flex: 1; }
+  .result-line { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid var(--border); font-size: 14px; }
+  .result-line:last-child { border-bottom: none; }
+  .result-line .v { font-weight: 600; }
+  .neg { color: var(--red); }
+  .pos { color: var(--green); }
+  .bar-wrap { background: var(--bg); border: 1px solid var(--border); border-radius: 8px; height: 22px; overflow: hidden; margin: 8px 0 4px; }
+  .bar { background: var(--accent); height: 100%; width: 0%; transition: width .3s; }
+  .bar-label { font-size: 13px; color: var(--muted); text-align: right; }
+  button {
+    padding: 10px 16px; font-size: 15px; border: none; border-radius: 8px;
+    background: var(--accent); color: #fff; cursor: pointer; margin-top: 12px;
+  }
+  button.ghost { background: transparent; color: var(--muted); border: 1px solid var(--border); }
+  table { width: 100%; border-collapse: collapse; margin-top: 12px; font-size: 13px; }
+  th, td { border-bottom: 1px solid var(--border); padding: 6px 8px; text-align: left; }
+  th { color: var(--muted); font-weight: 600; }
+  td .del { color: var(--red); cursor: pointer; }
+  .footer { color: var(--muted); font-size: 12px; margin-top: 24px; text-align: center; }
+</style>
+</head>
+<body>
+  <h1>複利挑戰追蹤器</h1>
+  <div class="sub">小資金翻倍挑戰（例：100U → 1000U）的期望值試算＋交易紀錄。資料只存在你這台電腦的瀏覽器裡。</div>
+
+  <div class="card">
+    <h2>① 挑戰設定與期望值試算</h2>
+    <div class="row">
+      <div><label>起始資金 U</label><input type="number" id="startCap" value="100" step="any"></div>
+      <div><label>目標資金 U</label><input type="number" id="targetCap" value="1000" step="any"></div>
+    </div>
+    <div class="row">
+      <div><label>單筆風險 %</label><input type="number" id="riskPct" value="2" step="any"></div>
+      <div><label>平均盈虧比 R</label><input type="number" id="rr" value="2" step="any"></div>
+      <div><label>預估勝率 %</label><input type="number" id="winRate" value="45" step="any"></div>
+    </div>
+    <div id="mathOut" style="margin-top:16px"></div>
+  </div>
+
+  <div class="card">
+    <h2>② 實際進度</h2>
+    <div class="bar-wrap"><div class="bar" id="bar"></div></div>
+    <div class="bar-label" id="barLabel">-</div>
+    <div class="result-line"><span>目前資金</span><span class="v" id="curCap">-</span></div>
+    <div class="result-line"><span>已記錄交易</span><span class="v" id="tradeCount">-</span></div>
+    <div class="result-line"><span>實際勝率</span><span class="v" id="realWinRate">-</span></div>
+  </div>
+
+  <div class="card">
+    <h2>③ 記一筆交易</h2>
+    <div class="row">
+      <div><label>結果（R 倍數，虧損填負數）</label><input type="number" id="tradeR" placeholder="例：2 或 -1" step="any"></div>
+      <div><label>備註（選填）</label><input type="text" id="tradeNote" placeholder="例：BTC 4H OB 反彈"></div>
+    </div>
+    <button onclick="addTrade()">記錄這筆</button>
+    <button class="ghost" onclick="resetAll()">重設整個挑戰</button>
+    <table id="log" style="display:none">
+      <thead><tr><th>#</th><th>日期</th><th>R</th><th>資金</th><th>備註</th><th></th></tr></thead>
+      <tbody></tbody>
+    </table>
+  </div>
+
+  <div class="footer">Trading Toolkit · MIT License · 僅供學習參考，不構成投資建議</div>
+
+<script>
+  const $ = id => document.getElementById(id);
+  const KEY = 'compound-challenge-v1';
+  let state = load();
+
+  ['startCap','targetCap','riskPct','rr','winRate'].forEach(id => {
+    $(id).addEventListener('input', () => { saveSettings(); render(); });
+  });
+
+  function load() {
+    try { return JSON.parse(localStorage.getItem(KEY)) || { trades: [] }; }
+    catch { return { trades: [] }; }
+  }
+  function save() { localStorage.setItem(KEY, JSON.stringify(state)); }
+  function saveSettings() {
+    state.settings = {
+      startCap: $('startCap').value, targetCap: $('targetCap').value,
+      riskPct: $('riskPct').value, rr: $('rr').value, winRate: $('winRate').value
+    };
+    save();
+  }
+  function restoreSettings() {
+    if (!state.settings) return;
+    for (const [k, v] of Object.entries(state.settings)) if ($(k)) $(k).value = v;
+  }
+
+  function fmt(n, d = 2) { return isFinite(n) ? n.toLocaleString('en-US', { maximumFractionDigits: d }) : '-'; }
+
+  function currentCapital() {
+    const start = parseFloat($('startCap').value) || 0;
+    const riskPct = (parseFloat($('riskPct').value) || 0) / 100;
+    let cap = start;
+    for (const t of state.trades) cap = cap * (1 + riskPct * t.r);
+    return cap;
+  }
+
+  function addTrade() {
+    const r = parseFloat($('tradeR').value);
+    if (!isFinite(r)) { alert('請填 R 倍數（例：2 或 -1）'); return; }
+    state.trades.push({ date: new Date().toISOString().slice(0, 10), r, note: $('tradeNote').value.trim() });
+    $('tradeR').value = ''; $('tradeNote').value = '';
+    save(); render();
+  }
+
+  function delTrade(i) { state.trades.splice(i, 1); save(); render(); }
+
+  function resetAll() {
+    if (!confirm('確定要清空所有交易紀錄？此動作無法復原。')) return;
+    state.trades = []; save(); render();
+  }
+
+  function render() {
+    const start = parseFloat($('startCap').value) || 0;
+    const target = parseFloat($('targetCap').value) || 0;
+    const riskPct = (parseFloat($('riskPct').value) || 0) / 100;
+    const rr = parseFloat($('rr').value) || 0;
+    const win = (parseFloat($('winRate').value) || 0) / 100;
+
+    // 期望值試算
+    const evR = win * rr - (1 - win);              // 每筆期望 R
+    const growth = 1 + riskPct * evR;              // 每筆平均資金成長倍數
+    let mathHtml = `<div class="result-line"><span>每筆期望值</span><span class="v ${evR >= 0 ? 'pos' : 'neg'}">${fmt(evR, 3)} R</span></div>`;
+    if (evR <= 0) {
+      mathHtml += `<div class="result-line"><span colspan="2" class="neg">期望值為負：這組勝率＋盈虧比長期必虧，先改策略再談翻倍。</span></div>`;
+    } else if (start > 0 && target > start && growth > 1) {
+      const n = Math.ceil(Math.log(target / start) / Math.log(growth));
+      mathHtml += `<div class="result-line"><span>平均每筆資金成長</span><span class="v">${fmt((growth - 1) * 100, 3)}%</span></div>`;
+      mathHtml += `<div class="result-line"><span>預估需要交易筆數</span><span class="v">約 ${n} 筆</span></div>`;
+      mathHtml += `<div class="result-line"><span>若每週 5 筆</span><span class="v">約 ${fmt(n / 5, 1)} 週</span></div>`;
+    }
+    $('mathOut').innerHTML = mathHtml;
+
+    // 進度
+    const cap = currentCapital();
+    const pct = target > start ? Math.max(0, Math.min(100, (cap - start) / (target - start) * 100)) : 0;
+    $('bar').style.width = pct + '%';
+    $('barLabel').textContent = fmt(pct, 1) + '%';
+    $('curCap').textContent = fmt(cap) + ' U';
+    $('tradeCount').textContent = state.trades.length + ' 筆';
+    const wins = state.trades.filter(t => t.r > 0).length;
+    $('realWinRate').textContent = state.trades.length ? fmt(wins / state.trades.length * 100, 1) + '%' : '-';
+
+    // 交易表
+    const tbl = $('log'), tbody = tbl.querySelector('tbody');
+    tbl.style.display = state.trades.length ? 'table' : 'none';
+    let cap2 = start;
+    tbody.innerHTML = state.trades.map((t, i) => {
+      cap2 = cap2 * (1 + riskPct * t.r);
+      return `<tr><td>${i + 1}</td><td>${t.date}</td>
+        <td class="${t.r >= 0 ? 'pos' : 'neg'}">${fmt(t.r, 2)}R</td>
+        <td>${fmt(cap2)}</td><td>${t.note || ''}</td>
+        <td><span class="del" onclick="delTrade(${i})">✕</span></td></tr>`;
+    }).join('');
+  }
+
+  restoreSettings();
+  render();
+</script>
+</body>
+</html>

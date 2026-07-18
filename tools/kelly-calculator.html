@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>凱利公式計算器 | Trading Toolkit</title>
+<style>
+  :root {
+    --bg: #0f1115; --card: #181b21; --border: #2a2e37;
+    --text: #e7e9ee; --muted: #9aa1ad; --accent: #4f8cff;
+    --green: #2ecc71; --red: #e74c3c; --yellow: #f1c40f;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'Noto Sans TC', -apple-system, sans-serif;
+    background: var(--bg); color: var(--text);
+    max-width: 560px; margin: 0 auto; padding: 32px 16px 64px;
+    line-height: 1.6;
+  }
+  h1 { font-size: 22px; margin-bottom: 4px; }
+  .sub { color: var(--muted); font-size: 13px; margin-bottom: 24px; }
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 20px; margin-bottom: 16px; }
+  label { display: block; font-size: 13px; color: var(--muted); margin: 12px 0 4px; }
+  label:first-child { margin-top: 0; }
+  input {
+    width: 100%; padding: 10px 12px; font-size: 16px;
+    background: var(--bg); color: var(--text);
+    border: 1px solid var(--border); border-radius: 8px;
+  }
+  input:focus { outline: none; border-color: var(--accent); }
+  .row { display: flex; gap: 12px; }
+  .row > div { flex: 1; }
+  .result-line { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid var(--border); font-size: 14px; }
+  .result-line:last-child { border-bottom: none; }
+  .result-line .v { font-weight: 600; }
+  .big { font-size: 20px; color: var(--accent); }
+  .pos { color: var(--green); }
+  .neg { color: var(--red); }
+  .warn { font-size: 13px; margin-top: 8px; }
+  .warn.red { color: var(--red); }
+  .warn.yellow { color: var(--yellow); }
+  .hint { color: var(--muted); font-size: 12px; margin-top: 10px; }
+  .footer { color: var(--muted); font-size: 12px; margin-top: 24px; text-align: center; }
+</style>
+</head>
+<body>
+  <h1>凱利公式計算器</h1>
+  <div class="sub">輸入勝率與盈虧比，推導理論最適風險比例。所有計算都在你的瀏覽器本機執行。</div>
+
+  <div class="card">
+    <div class="row">
+      <div>
+        <label>勝率（%）</label>
+        <input type="number" id="winRate" placeholder="例：45" step="any">
+      </div>
+      <div>
+        <label>盈虧比（平均獲利 ÷ 平均虧損）</label>
+        <input type="number" id="rr" placeholder="例：2" step="any">
+      </div>
+    </div>
+    <div class="hint">勝率與盈虧比建議用最近 30 筆以上的實際交易紀錄統計，別用感覺猜。</div>
+  </div>
+
+  <div class="card" id="results" style="display:none">
+    <div class="result-line"><span>期望值（每承擔 1 單位風險）</span><span class="v" id="expectancy"></span></div>
+    <div class="result-line"><span>完整凱利 f*</span><span class="v" id="fullKelly"></span></div>
+    <div class="result-line"><span>半凱利（常用實戰值）</span><span class="v big" id="halfKelly"></span></div>
+    <div class="result-line"><span>四分之一凱利（保守值）</span><span class="v" id="quarterKelly"></span></div>
+    <div class="result-line"><span>損益兩平所需勝率</span><span class="v" id="breakeven"></span></div>
+    <div class="warn" id="warn"></div>
+  </div>
+
+  <div class="card">
+    <div class="hint">
+      公式：f* = W − (1 − W) ÷ R，W 為勝率、R 為盈虧比。<br>
+      完整凱利假設勝率與盈虧比完全準確，實際交易的統計一定有誤差，
+      因此實戰普遍採用半凱利或更低，波動減半、長期成長只犧牲約四分之一。
+      算出來的 % 是「單筆風險占資金比例」，可直接填進倉位風險計算器。
+    </div>
+  </div>
+
+  <div class="footer">
+    Trading Toolkit · MIT License · 僅供學習參考，不構成投資建議
+  </div>
+
+<script>
+  const $ = id => document.getElementById(id);
+  ['winRate', 'rr'].forEach(id => $(id).addEventListener('input', calc));
+
+  function pct(n, d) {
+    if (!isFinite(n)) return '-';
+    return n.toLocaleString('en-US', { maximumFractionDigits: d ?? 2 }) + '%';
+  }
+
+  function calc() {
+    const wPct = parseFloat($('winRate').value);
+    const r = parseFloat($('rr').value);
+
+    if (!isFinite(wPct) || !isFinite(r) || wPct <= 0 || wPct >= 100 || r <= 0) {
+      $('results').style.display = 'none';
+      return;
+    }
+    $('results').style.display = 'block';
+
+    const w = wPct / 100;
+    const kelly = w - (1 - w) / r;          // f* = W - (1-W)/R
+    const expectancy = w * r - (1 - w);     // 每 1R 風險的期望值
+    const breakeven = 1 / (1 + r) * 100;    // 該盈虧比下的兩平勝率
+
+    const expEl = $('expectancy');
+    expEl.textContent = (expectancy >= 0 ? '+' : '') + expectancy.toFixed(3) + ' R';
+    expEl.className = 'v ' + (expectancy >= 0 ? 'pos' : 'neg');
+
+    $('breakeven').textContent = pct(breakeven);
+
+    const warn = $('warn');
+    if (kelly <= 0) {
+      $('fullKelly').textContent = '無（負期望值）';
+      $('halfKelly').textContent = '-';
+      $('quarterKelly').textContent = '-';
+      warn.className = 'warn red';
+      warn.textContent = '⚠ 這組勝率／盈虧比是負期望值：任何倉位長期都會虧。先改進策略（提高勝率或盈虧比），不是調倉位。';
+      return;
+    }
+
+    $('fullKelly').textContent = pct(kelly * 100);
+    $('halfKelly').textContent = pct(kelly * 50);
+    $('quarterKelly').textContent = pct(kelly * 25);
+
+    if (kelly * 50 > 5) {
+      warn.className = 'warn yellow';
+      warn.textContent = '⚠ 半凱利已超過 5%。除非你對統計數據非常有信心，一般建議單筆風險仍壓在 1–3%。';
+    } else {
+      warn.className = 'warn';
+      warn.textContent = '';
+    }
+  }
+</script>
+</body>
+</html>

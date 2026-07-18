@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>倉位風險計算器 | Trading Toolkit</title>
+<style>
+  :root {
+    --bg: #0f1115; --card: #181b21; --border: #2a2e37;
+    --text: #e7e9ee; --muted: #9aa1ad; --accent: #4f8cff;
+    --green: #2ecc71; --red: #e74c3c;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'Noto Sans TC', -apple-system, sans-serif;
+    background: var(--bg); color: var(--text);
+    max-width: 560px; margin: 0 auto; padding: 32px 16px 64px;
+    line-height: 1.6;
+  }
+  h1 { font-size: 22px; margin-bottom: 4px; }
+  .sub { color: var(--muted); font-size: 13px; margin-bottom: 24px; }
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 20px; margin-bottom: 16px; }
+  label { display: block; font-size: 13px; color: var(--muted); margin: 12px 0 4px; }
+  label:first-child { margin-top: 0; }
+  input {
+    width: 100%; padding: 10px 12px; font-size: 16px;
+    background: var(--bg); color: var(--text);
+    border: 1px solid var(--border); border-radius: 8px;
+  }
+  input:focus { outline: none; border-color: var(--accent); }
+  .row { display: flex; gap: 12px; }
+  .row > div { flex: 1; }
+  .result-line { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid var(--border); font-size: 14px; }
+  .result-line:last-child { border-bottom: none; }
+  .result-line .v { font-weight: 600; }
+  .big { font-size: 20px; color: var(--accent); }
+  .dir { font-weight: 700; }
+  .dir.long { color: var(--green); }
+  .dir.short { color: var(--red); }
+  .warn { color: var(--red); font-size: 13px; margin-top: 8px; }
+  .footer { color: var(--muted); font-size: 12px; margin-top: 24px; text-align: center; }
+  .footer a { color: var(--muted); }
+</style>
+</head>
+<body>
+  <h1>倉位風險計算器</h1>
+  <div class="sub">輸入四個數字，算出這筆單該下多大。所有計算都在你的瀏覽器本機執行。</div>
+
+  <div class="card">
+    <div class="row">
+      <div>
+        <label>帳戶資金（USDT）</label>
+        <input type="number" id="equity" placeholder="例：100" step="any">
+      </div>
+      <div>
+        <label>單筆風險（% 資金）</label>
+        <input type="number" id="riskPct" placeholder="例：2" step="any" value="2">
+      </div>
+    </div>
+    <div class="row">
+      <div>
+        <label>進場價</label>
+        <input type="number" id="entry" placeholder="例：65000" step="any">
+      </div>
+      <div>
+        <label>停損價</label>
+        <input type="number" id="stop" placeholder="例：64000" step="any">
+      </div>
+    </div>
+  </div>
+
+  <div class="card" id="results" style="display:none">
+    <div class="result-line"><span>方向（依進場／停損自動判斷）</span><span class="v dir" id="direction"></span></div>
+    <div class="result-line"><span>本筆最大虧損（1R）</span><span class="v" id="riskAmt"></span></div>
+    <div class="result-line"><span>停損距離</span><span class="v" id="stopDist"></span></div>
+    <div class="result-line"><span>倉位數量</span><span class="v big" id="qty"></span></div>
+    <div class="result-line"><span>倉位名目價值</span><span class="v" id="notional"></span></div>
+    <div class="result-line"><span>名目價值 ÷ 資金（需要的最低槓桿）</span><span class="v" id="leverage"></span></div>
+    <div class="result-line"><span>停利 1R</span><span class="v" id="tp1"></span></div>
+    <div class="result-line"><span>停利 2R</span><span class="v" id="tp2"></span></div>
+    <div class="result-line"><span>停利 3R</span><span class="v" id="tp3"></span></div>
+    <div class="warn" id="warn"></div>
+  </div>
+
+  <div class="footer">
+    Trading Toolkit · MIT License · 僅供學習參考，不構成投資建議
+  </div>
+
+<script>
+  const $ = id => document.getElementById(id);
+  const inputs = ['equity', 'riskPct', 'entry', 'stop'];
+  inputs.forEach(id => $(id).addEventListener('input', calc));
+
+  function fmt(n, d) {
+    if (!isFinite(n)) return '-';
+    return n.toLocaleString('en-US', { maximumFractionDigits: d ?? 4 });
+  }
+
+  function calc() {
+    const equity = parseFloat($('equity').value);
+    const riskPct = parseFloat($('riskPct').value);
+    const entry = parseFloat($('entry').value);
+    const stop = parseFloat($('stop').value);
+
+    if (![equity, riskPct, entry, stop].every(v => isFinite(v) && v > 0) || entry === stop) {
+      $('results').style.display = 'none';
+      return;
+    }
+    $('results').style.display = 'block';
+
+    const isLong = entry > stop;                 // 停損在下方 = 做多
+    const riskAmt = equity * riskPct / 100;      // 1R 金額
+    const stopDist = Math.abs(entry - stop);     // 每單位虧損
+    const qty = riskAmt / stopDist;              // 倉位數量
+    const notional = qty * entry;                // 名目價值
+    const lev = notional / equity;               // 需要的最低槓桿
+
+    const dirEl = $('direction');
+    dirEl.textContent = isLong ? '做多 LONG' : '做空 SHORT';
+    dirEl.className = 'v dir ' + (isLong ? 'long' : 'short');
+
+    $('riskAmt').textContent = fmt(riskAmt, 2) + ' USDT';
+    $('stopDist').textContent = fmt(stopDist) + '（' + fmt(stopDist / entry * 100, 2) + '%）';
+    $('qty').textContent = fmt(qty, 6);
+    $('notional').textContent = fmt(notional, 2) + ' USDT';
+    $('leverage').textContent = lev <= 1 ? '不需槓桿（現貨可做）' : fmt(lev, 2) + 'x';
+
+    const sign = isLong ? 1 : -1;
+    $('tp1').textContent = fmt(entry + sign * stopDist);
+    $('tp2').textContent = fmt(entry + sign * stopDist * 2);
+    $('tp3').textContent = fmt(entry + sign * stopDist * 3);
+
+    $('warn').textContent =
+      riskPct > 5 ? '⚠ 單筆風險超過 5%，連續虧損會很傷，建議降到 1–3%。' :
+      lev > 20 ? '⚠ 需要 20 倍以上槓桿，離爆倉價很近，請確認交易所維持保證金規則。' : '';
+  }
+</script>
+</body>
+</html>

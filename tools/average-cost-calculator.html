@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>分批進場平均成本計算器 | Trading Toolkit</title>
+<style>
+  :root {
+    --bg: #0f1115; --card: #181b21; --border: #2a2e37;
+    --text: #e7e9ee; --muted: #9aa1ad; --accent: #4f8cff;
+    --green: #2ecc71; --red: #e74c3c;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'Noto Sans TC', -apple-system, sans-serif;
+    background: var(--bg); color: var(--text);
+    max-width: 560px; margin: 0 auto; padding: 32px 16px 64px;
+    line-height: 1.6;
+  }
+  h1 { font-size: 22px; margin-bottom: 4px; }
+  h2 { font-size: 15px; margin-bottom: 12px; }
+  .sub { color: var(--muted); font-size: 13px; margin-bottom: 24px; }
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 20px; margin-bottom: 16px; }
+  label { display: block; font-size: 13px; color: var(--muted); margin: 12px 0 4px; }
+  label:first-child { margin-top: 0; }
+  input, select {
+    width: 100%; padding: 10px 12px; font-size: 16px;
+    background: var(--bg); color: var(--text);
+    border: 1px solid var(--border); border-radius: 8px;
+  }
+  input:focus, select:focus { outline: none; border-color: var(--accent); }
+  .row { display: flex; gap: 12px; }
+  .row > div { flex: 1; }
+  .entry { display: flex; gap: 8px; align-items: flex-end; margin-bottom: 8px; }
+  .entry > div { flex: 1; }
+  .entry .no { flex: 0 0 24px; color: var(--muted); font-size: 13px; padding-bottom: 10px; text-align: center; }
+  .btn {
+    padding: 10px 14px; font-size: 14px; cursor: pointer;
+    background: var(--bg); color: var(--text);
+    border: 1px solid var(--border); border-radius: 8px;
+  }
+  .btn:hover { border-color: var(--accent); }
+  .btn.del { flex: 0 0 40px; color: var(--muted); padding: 10px 0; }
+  .btn.del:hover { border-color: var(--red); color: var(--red); }
+  .btn.add { width: 100%; margin-top: 4px; color: var(--accent); }
+  .result-line { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid var(--border); font-size: 14px; gap: 12px; }
+  .result-line:last-child { border-bottom: none; }
+  .result-line .v { font-weight: 600; text-align: right; white-space: nowrap; }
+  .big { font-size: 20px; color: var(--accent); }
+  .green { color: var(--green); }
+  .red { color: var(--red); }
+  .hint { color: var(--muted); font-size: 12px; margin-top: 10px; }
+  .footer { color: var(--muted); font-size: 12px; margin-top: 24px; text-align: center; }
+</style>
+</head>
+<body>
+  <h1>分批進場平均成本計算器</h1>
+  <div class="sub">分幾筆進場、每筆價格不同時，算出真正的平均成本、目前損益，以及「還要加碼多少才能把均價壓到某個價位」。所有計算都在你的瀏覽器本機執行。</div>
+
+  <div class="card">
+    <h2>進場明細</h2>
+    <div id="entries"></div>
+    <button class="btn add" id="addBtn">＋ 新增一筆進場</button>
+
+    <div class="row" style="margin-top:16px">
+      <div>
+        <label>方向</label>
+        <select id="side">
+          <option value="long">做多 LONG</option>
+          <option value="short">做空 SHORT</option>
+        </select>
+      </div>
+      <div>
+        <label>單邊手續費（%，可留空）</label>
+        <input type="number" id="fee" placeholder="例：0.05" step="any">
+      </div>
+    </div>
+    <label>目前市價（可留空，只想看均價就不用填）</label>
+    <input type="number" id="mark" placeholder="例：66000" step="any">
+  </div>
+
+  <div class="card" id="results" style="display:none">
+    <h2>結果</h2>
+    <div class="result-line"><span>總數量</span><span class="v" id="totalQty"></span></div>
+    <div class="result-line"><span>總投入（名目價值）</span><span class="v" id="totalCost"></span></div>
+    <div class="result-line"><span>平均成本</span><span class="v big" id="avgPrice"></span></div>
+    <div class="result-line" id="beLine"><span>含手續費的損益兩平價</span><span class="v" id="breakeven"></span></div>
+    <div class="result-line" id="plLine"><span>目前未實現損益</span><span class="v" id="pnl"></span></div>
+    <div class="result-line" id="plPctLine"><span>報酬率（對總投入）</span><span class="v" id="pnlPct"></span></div>
+  </div>
+
+  <div class="card" id="targetCard" style="display:none">
+    <h2>加碼試算：要把均價拉到目標</h2>
+    <div class="row">
+      <div>
+        <label>目標平均成本</label>
+        <input type="number" id="targetAvg" placeholder="例：64000" step="any">
+      </div>
+      <div>
+        <label>加碼價格</label>
+        <input type="number" id="addPrice" placeholder="例：62000" step="any">
+      </div>
+    </div>
+    <div id="targetOut" style="display:none; margin-top:12px">
+      <div class="result-line"><span>需要加碼數量</span><span class="v big" id="needQty"></span></div>
+      <div class="result-line"><span>需要追加資金</span><span class="v" id="needCost"></span></div>
+      <div class="result-line"><span>加碼後總數量</span><span class="v" id="newQty"></span></div>
+    </div>
+    <div class="hint" id="targetHint"></div>
+  </div>
+
+  <div class="footer">
+    Trading Toolkit · MIT License · 僅供學習參考，不構成投資建議
+  </div>
+
+<script>
+  const $ = id => document.getElementById(id);
+  const entriesEl = $('entries');
+
+  function fmt(n, d) {
+    if (!isFinite(n)) return '-';
+    return n.toLocaleString('en-US', { maximumFractionDigits: d ?? 4 });
+  }
+
+  // 新增一列進場輸入
+  function addEntry(price, qty) {
+    const div = document.createElement('div');
+    div.className = 'entry';
+    div.innerHTML =
+      '<div class="no"></div>' +
+      '<div><label>價格</label><input type="number" class="p" step="any" placeholder="價格"></div>' +
+      '<div><label>數量</label><input type="number" class="q" step="any" placeholder="數量"></div>' +
+      '<button class="btn del" title="刪除這筆">✕</button>';
+    if (price != null) div.querySelector('.p').value = price;
+    if (qty != null) div.querySelector('.q').value = qty;
+    div.querySelectorAll('input').forEach(i => i.addEventListener('input', calc));
+    div.querySelector('.del').addEventListener('click', () => {
+      if (entriesEl.children.length > 1) { div.remove(); renumber(); calc(); }
+    });
+    entriesEl.appendChild(div);
+    renumber();
+  }
+
+  function renumber() {
+    [...entriesEl.children].forEach((el, i) => {
+      el.querySelector('.no').textContent = i + 1;
+      // 只有第一列顯示欄位標題，其餘隱藏，畫面比較乾淨
+      el.querySelectorAll('label').forEach(l => l.style.display = i === 0 ? 'block' : 'none');
+    });
+  }
+
+  function readEntries() {
+    return [...entriesEl.children].map(el => ({
+      price: parseFloat(el.querySelector('.p').value),
+      qty: parseFloat(el.querySelector('.q').value)
+    })).filter(e => isFinite(e.price) && isFinite(e.qty) && e.price > 0 && e.qty > 0);
+  }
+
+  function calc() {
+    const rows = readEntries();
+    if (rows.length === 0) {
+      $('results').style.display = 'none';
+      $('targetCard').style.display = 'none';
+      return;
+    }
+    $('results').style.display = 'block';
+    $('targetCard').style.display = 'block';
+
+    const isLong = $('side').value === 'long';
+    const totalQty = rows.reduce((s, e) => s + e.qty, 0);
+    const totalCost = rows.reduce((s, e) => s + e.price * e.qty, 0);
+    const avg = totalCost / totalQty;                     // 加權平均成本
+
+    $('totalQty').textContent = fmt(totalQty);
+    $('totalCost').textContent = fmt(totalCost, 2);
+    $('avgPrice').textContent = fmt(avg);
+
+    // 損益兩平價：進出各付一次單邊手續費
+    const feePct = parseFloat($('fee').value);
+    if (isFinite(feePct) && feePct > 0) {
+      const f = feePct / 100;
+      // 多單：賣出價 x 需滿足 x(1-f) = avg(1+f)
+      const be = isLong ? avg * (1 + f) / (1 - f) : avg * (1 - f) / (1 + f);
+      $('breakeven').textContent = fmt(be);
+      $('beLine').style.display = 'flex';
+    } else {
+      $('beLine').style.display = 'none';
+    }
+
+    // 未實現損益
+    const mark = parseFloat($('mark').value);
+    if (isFinite(mark) && mark > 0) {
+      const pnl = (isLong ? mark - avg : avg - mark) * totalQty;
+      const pct = pnl / totalCost * 100;
+      const cls = 'v ' + (pnl >= 0 ? 'green' : 'red');
+      $('pnl').className = cls; $('pnlPct').className = cls;
+      $('pnl').textContent = (pnl >= 0 ? '+' : '') + fmt(pnl, 2);
+      $('pnlPct').textContent = (pnl >= 0 ? '+' : '') + fmt(pct, 2) + '%';
+      $('plLine').style.display = 'flex';
+      $('plPctLine').style.display = 'flex';
+    } else {
+      $('plLine').style.display = 'none';
+      $('plPctLine').style.display = 'none';
+    }
+
+    calcTarget(totalQty, totalCost, avg);
+  }
+
+  // 反解：加碼 q 顆在 addPrice，使新均價 = targetAvg
+  // (totalCost + addPrice*q) / (totalQty + q) = targetAvg
+  // => q = (targetAvg*totalQty - totalCost) / (addPrice - targetAvg)
+  function calcTarget(totalQty, totalCost, avg) {
+    const target = parseFloat($('targetAvg').value);
+    const addP = parseFloat($('addPrice').value);
+    const out = $('targetOut'), hint = $('targetHint');
+
+    if (!isFinite(target) || !isFinite(addP) || target <= 0 || addP <= 0) {
+      out.style.display = 'none'; hint.textContent = '';
+      return;
+    }
+    if (Math.abs(addP - target) < 1e-12) {
+      out.style.display = 'none';
+      hint.textContent = '加碼價等於目標均價，無法達成（除非本來就已經在目標價）。';
+      return;
+    }
+    const q = (target * totalQty - totalCost) / (addP - target);
+    if (!isFinite(q) || q <= 0) {
+      out.style.display = 'none';
+      const dir = target < avg ? '低於' : '高於';
+      hint.textContent = `這個組合做不到：目前均價 ${fmt(avg)}，目標 ${fmt(target)}。要把均價往下拉，加碼價必須低於目標均價；要往上拉則必須高於。（目標${dir}均價）`;
+      return;
+    }
+    out.style.display = 'block';
+    $('needQty').textContent = fmt(q);
+    $('needCost').textContent = fmt(q * addP, 2);
+    $('newQty').textContent = fmt(totalQty + q);
+    hint.textContent = '提醒：攤平會放大部位與風險。加碼前先確認總風險仍在單筆風險上限內。';
+  }
+
+  ['side', 'fee', 'mark', 'targetAvg', 'addPrice'].forEach(id => $(id).addEventListener('input', calc));
+  $('side').addEventListener('change', calc);
+  $('addBtn').addEventListener('click', () => addEntry());
+
+  addEntry(); addEntry();
+</script>
+</body>
+</html>

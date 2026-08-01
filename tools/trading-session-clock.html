@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>交易時區對照表 | Trading Toolkit</title>
+<style>
+  :root {
+    --bg: #0f1115; --card: #181b21; --border: #2a2e37;
+    --text: #e7e9ee; --muted: #9aa1ad; --accent: #4f8cff;
+    --green: #2ecc71; --red: #e74c3c; --yellow: #f1c40f;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'Noto Sans TC', -apple-system, sans-serif;
+    background: var(--bg); color: var(--text);
+    max-width: 640px; margin: 0 auto; padding: 32px 16px 64px;
+    line-height: 1.6;
+  }
+  h1 { font-size: 22px; margin-bottom: 4px; }
+  .sub { color: var(--muted); font-size: 13px; margin-bottom: 24px; }
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 20px; margin-bottom: 16px; }
+  .clock-row { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 8px; }
+  .clock-row:last-child { margin-bottom: 0; }
+  .clock-row .zone { color: var(--muted); font-size: 13px; }
+  .clock-row .time { font-size: 18px; font-variant-numeric: tabular-nums; letter-spacing: .5px; }
+  .clock-row .time.local { color: var(--accent); font-weight: 600; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { padding: 10px 8px; text-align: center; border-bottom: 1px solid var(--border); }
+  th { color: var(--muted); font-weight: 500; font-size: 12px; }
+  td:first-child, th:first-child { text-align: left; }
+  tr.active td { background: rgba(46, 204, 113, .10); }
+  .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; vertical-align: middle; background: var(--border); }
+  tr.active .dot { background: var(--green); box-shadow: 0 0 8px var(--green); }
+  .badge { font-size: 11px; padding: 2px 8px; border-radius: 999px; border: 1px solid var(--border); color: var(--muted); white-space: nowrap; }
+  .badge.on { background: rgba(46,204,113,.15); border-color: var(--green); color: var(--green); }
+  .sname { font-weight: 600; }
+  .note { color: var(--muted); font-size: 12px; margin-top: 4px; }
+  footer { color: var(--muted); font-size: 12px; margin-top: 24px; text-align: center; line-height: 1.8; }
+</style>
+</head>
+<body>
+  <h1>交易時區對照表</h1>
+  <div class="sub">ICT Killzone 時段 × 紐約／倫敦／台灣時間 · 自動換算夏令時間 · 即時標示進行中的盤</div>
+
+  <div class="card" id="clocks">
+    <div class="clock-row"><span class="zone">你的當地時間</span><span class="time local" id="c-local">--:--:--</span></div>
+    <div class="clock-row"><span class="zone">🇹🇼 台灣 (UTC+8)</span><span class="time" id="c-tw">--:--:--</span></div>
+    <div class="clock-row"><span class="zone">🇺🇸 紐約 (ET)</span><span class="time" id="c-ny">--:--:--</span></div>
+    <div class="clock-row"><span class="zone">🇬🇧 倫敦 (UK)</span><span class="time" id="c-ldn">--:--:--</span></div>
+  </div>
+
+  <div class="card">
+    <table>
+      <thead>
+        <tr><th>Killzone 時段</th><th>紐約 ET</th><th>倫敦</th><th>台灣</th><th>狀態</th></tr>
+      </thead>
+      <tbody id="rows"></tbody>
+    </table>
+    <div class="note">時段以紐約時間（ICT 標準）定義，其餘時區依當日夏令時間自動換算。</div>
+  </div>
+
+  <footer>
+    Killzone 為統計上波動與流動性較集中的時段，非進場訊號，僅供規劃盯盤時間參考。<br>
+    所有換算都在你的瀏覽器本機執行，不上傳任何資料。
+  </footer>
+
+<script>
+  // ICT Killzone：以紐約(ET)牆上時間定義的起訖小時。跨午夜以 end 24 表示。
+  const SESSIONS = [
+    { name: '亞洲 Killzone',       start: 20, end: 24, note: '亞洲盤' },
+    { name: '倫敦 Killzone',       start: 2,  end: 5,  note: '倫敦開盤' },
+    { name: '紐約 AM Killzone',    start: 7,  end: 10, note: '紐約開盤' },
+    { name: '倫敦收盤 Killzone',   start: 10, end: 12, note: 'London Close' },
+  ];
+  const NY_TZ = 'America/New_York', LDN_TZ = 'Europe/London', TW_TZ = 'Asia/Taipei';
+
+  // 取得某 UTC 瞬間在指定時區的偏移(分鐘)
+  function offsetMin(tz, date) {
+    const dtf = new Intl.DateTimeFormat('en-US', { timeZone: tz, hour12: false,
+      year:'numeric', month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit', second:'2-digit' });
+    const p = {}; for (const x of dtf.formatToParts(date)) p[x.type] = x.value;
+    const asUTC = Date.UTC(+p.year, +p.month-1, +p.day, +p.hour === 24 ? 0 : +p.hour, +p.minute, +p.second);
+    return (asUTC - date.getTime()) / 60000;
+  }
+  // 把某時區的牆上時間(y,m,d,h) 轉成 UTC 瞬間(Date)
+  function wallToUTC(tz, y, m, d, h) {
+    let ts = Date.UTC(y, m-1, d, h, 0, 0);
+    ts -= offsetMin(tz, new Date(ts)) * 60000;
+    ts -= offsetMin(tz, new Date(ts)) * 60000 - offsetMin(tz, new Date(ts - offsetMin(tz, new Date(ts))*0)) * 0; // 收斂一次
+    // 二次收斂避免 DST 邊界誤差
+    ts = Date.UTC(y, m-1, d, h, 0, 0) - offsetMin(tz, new Date(Date.UTC(y, m-1, d, h, 0, 0))) * 60000;
+    ts = Date.UTC(y, m-1, d, h, 0, 0) - offsetMin(tz, new Date(ts)) * 60000;
+    return new Date(ts);
+  }
+  function fmt(tz, date, withSec) {
+    return new Intl.DateTimeFormat('zh-TW', { timeZone: tz, hour12: false,
+      hour:'2-digit', minute:'2-digit', ...(withSec ? {second:'2-digit'} : {}) }).format(date);
+  }
+  function hm(tz, date) { return fmt(tz, date, false); }
+
+  function nyDateParts(now) {
+    const dtf = new Intl.DateTimeFormat('en-US', { timeZone: NY_TZ, year:'numeric', month:'2-digit', day:'2-digit' });
+    const p = {}; for (const x of dtf.formatToParts(now)) p[x.type] = x.value;
+    return { y:+p.year, m:+p.month, d:+p.day };
+  }
+  const pad = n => String(n).padStart(2,'0');
+
+  function render() {
+    const now = new Date();
+    document.getElementById('c-local').textContent =
+      new Intl.DateTimeFormat('zh-TW',{hour12:false,hour:'2-digit',minute:'2-digit',second:'2-digit'}).format(now);
+    document.getElementById('c-tw').textContent  = fmt(TW_TZ, now, true);
+    document.getElementById('c-ny').textContent  = fmt(NY_TZ, now, true);
+    document.getElementById('c-ldn').textContent = fmt(LDN_TZ, now, true);
+
+    const { y, m, d } = nyDateParts(now);
+    let html = '';
+    for (const s of SESSIONS) {
+      // 今日該時段的 UTC 起訖（以紐約牆上時間為準）
+      let startU = wallToUTC(NY_TZ, y, m, d, s.start);
+      let endU   = wallToUTC(NY_TZ, y, m, d, s.end === 24 ? 0 : s.end);
+      if (s.end === 24 || s.end <= s.start) endU = new Date(endU.getTime() + 24*3600*1000); // 跨午夜
+      // 若已過今天此時段，看下一次（純供倒數用，不影響顯示時間）
+      let active = now >= startU && now < endU;
+      // 亞洲盤可能昨天就開始並延續到今天凌晨：補檢查前一天
+      if (!active) {
+        const py = new Date(startU.getTime() - 24*3600*1000);
+        const s2 = wallToUTC(NY_TZ, py.getUTCFullYear(), py.getUTCMonth()+1, py.getUTCDate(), s.start);
+        // 以紐約日期回推較穩：直接用起點-24h、終點-24h 判斷
+        const startY = new Date(startU.getTime() - 24*3600*1000);
+        const endY   = new Date(endU.getTime()   - 24*3600*1000);
+        if (now >= startY && now < endY) active = true;
+      }
+      const endLabel = s.end === 24 ? '00:00' : pad(s.end)+':00';
+      const nyRange  = pad(s.start)+':00–'+endLabel;
+      const ldnRange = hm(LDN_TZ, startU)+'–'+hm(LDN_TZ, endU);
+      const twRange  = hm(TW_TZ, startU)+'–'+hm(TW_TZ, endU);
+      html += `<tr class="${active ? 'active' : ''}">
+        <td><span class="dot"></span><span class="sname">${s.name}</span><br><span class="note" style="margin-left:14px">${s.note}</span></td>
+        <td>${nyRange}</td><td>${ldnRange}</td><td>${twRange}</td>
+        <td><span class="badge ${active ? 'on' : ''}">${active ? '進行中' : '休息'}</span></td>
+      </tr>`;
+    }
+    document.getElementById('rows').innerHTML = html;
+  }
+  render();
+  setInterval(render, 1000);
+</script>
+</body>
+</html>

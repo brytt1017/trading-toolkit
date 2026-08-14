@@ -9,6 +9,10 @@
 | 工具 | 檔案 | 說明 |
 |------|------|------|
 | 倉位風險計算器 | `tools/position-size-calculator.html` | 輸入帳戶資金、單筆風險 %、進場價、停損價，算出倉位大小、名目價值、1R/2R/3R 停利價位 |
+| 凱利公式計算器 | `tools/kelly-calculator.html` | 由勝率與盈虧比推導最適風險比例，附半凱利／四分之一凱利與損益兩平勝率 |
+| 分批進場平均成本計算器 | `tools/average-cost-calculator.html` | 多筆不同價位進場的真實均價、目前損益，以及還要加碼多少才能把均價壓到目標價 |
+| 資金費率換算器 | `tools/funding-rate-calculator.html` | 單期資金費率換算年化成本、持倉期間總費用、占本金比例與打平所需價格變動 |
+| 交易時區對照表 | `tools/trading-session-clock.html` | ICT Killzone 時段對照紐約／倫敦／台灣時間，自動處理夏令時間並標示進行中的盤 |
 | 複利挑戰追蹤器 | `tools/compound-challenge-tracker.html` | 小資金翻倍挑戰（如 100U → 1000U）的期望值試算與交易紀錄追蹤 |
 
 ## 使用方式

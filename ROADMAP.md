@@ -4,13 +4,14 @@
 
 - [x] 倉位風險計算器（position-size-calculator）
 - [x] 複利挑戰追蹤器（compound-challenge-tracker）
+- [x] 凱利公式計算器（kelly-calculator）：由勝率與盈虧比推導最適風險比例
+- [x] 交易時區對照表（trading-session-clock）：紐約／倫敦／亞洲盤 Killzone 時間（含台灣時間）
+- [x] 多筆分批進場的平均成本計算器（average-cost-calculator）
+- [x] 資金費率換算器（funding-rate-calculator）：年化資金費率成本試算
 
 ## 近期計畫（歡迎開 Issue 許願）
 
-- [ ] 資金費率換算器：年化資金費率成本試算
-- [ ] 凱利公式計算器：由勝率與盈虧比推導最適風險比例
-- [ ] 交易時區對照表：紐約／倫敦／亞洲盤 Killzone 時間（含台灣時間）
 - [ ] 停損掛單價差計算：市價滑點緩衝試算
-- [ ] 多筆分批進場的平均成本計算器
+- [ ] 手續費累積試算：不同交易頻率下的年度手續費成本
 - [ ] 英文版介面（i18n）
 - [ ] GitHub Pages 線上版，免下載直接用

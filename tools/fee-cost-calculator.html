@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>手續費累積試算器 | Trading Toolkit</title>
+<style>
+  :root {
+    --bg: #0f1115; --card: #181b21; --border: #2a2e37;
+    --text: #e7e9ee; --muted: #9aa1ad; --accent: #4f8cff;
+    --green: #2ecc71; --red: #e74c3c; --yellow: #f1c40f;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'Noto Sans TC', -apple-system, sans-serif;
+    background: var(--bg); color: var(--text);
+    max-width: 560px; margin: 0 auto; padding: 32px 16px 64px;
+    line-height: 1.6;
+  }
+  h1 { font-size: 22px; margin-bottom: 4px; }
+  .sub { color: var(--muted); font-size: 13px; margin-bottom: 24px; }
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 20px; margin-bottom: 16px; }
+  .card h2 { font-size: 14px; color: var(--muted); font-weight: 600; margin-bottom: 12px; }
+  label { display: block; font-size: 13px; color: var(--muted); margin: 12px 0 4px; }
+  label:first-child { margin-top: 0; }
+  input {
+    width: 100%; padding: 10px 12px; font-size: 16px;
+    background: var(--bg); color: var(--text);
+    border: 1px solid var(--border); border-radius: 8px;
+  }
+  input:focus { outline: none; border-color: var(--accent); }
+  .row { display: flex; gap: 12px; }
+  .row > div { flex: 1; }
+  .result-line { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid var(--border); font-size: 14px; gap: 12px; }
+  .result-line:last-child { border-bottom: none; }
+  .result-line .v { font-weight: 600; text-align: right; white-space: nowrap; }
+  .big { font-size: 20px; color: var(--accent); }
+  .pos { color: var(--green); }
+  .neg { color: var(--red); }
+  .warn { font-size: 13px; margin-top: 10px; }
+  .warn.red { color: var(--red); }
+  .warn.yellow { color: var(--yellow); }
+  .hint { color: var(--muted); font-size: 12px; margin-top: 10px; }
+  .footer { color: var(--muted); font-size: 12px; margin-top: 24px; text-align: center; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { padding: 7px 4px; border-bottom: 1px solid var(--border); text-align: right; }
+  th:first-child, td:first-child { text-align: left; }
+  th { color: var(--muted); font-weight: 500; }
+  tr.me td { color: var(--accent); font-weight: 600; }
+</style>
+</head>
+<body>
+  <h1>手續費累積試算器</h1>
+  <div class="sub">算出不同交易頻率下，一年被手續費吃掉多少本金。所有計算都在你的瀏覽器本機執行。</div>
+
+  <div class="card">
+    <h2>帳戶與部位</h2>
+    <div class="row">
+      <div>
+        <label>帳戶資金（USD）</label>
+        <input type="number" id="equity" placeholder="例：10000" step="any" value="10000">
+      </div>
+      <div>
+        <label>平均單筆名目部位（USD）</label>
+        <input type="number" id="notional" placeholder="例：20000" step="any" value="20000">
+      </div>
+    </div>
+    <div class="hint">名目部位＝進場價 × 數量（含槓桿後的實際部位大小），手續費是按名目部位收的，不是按保證金。</div>
+  </div>
+
+  <div class="card">
+    <h2>費率</h2>
+    <div class="row">
+      <div>
+        <label>Maker 費率（%）</label>
+        <input type="number" id="makerFee" placeholder="例：0.02" step="any" value="0.02">
+      </div>
+      <div>
+        <label>Taker 費率（%）</label>
+        <input type="number" id="takerFee" placeholder="例：0.05" step="any" value="0.05">
+      </div>
+    </div>
+    <div class="row">
+      <div>
+        <label>Maker 成交比例（%）</label>
+        <input type="number" id="makerRatio" placeholder="例：50" step="any" value="50">
+      </div>
+      <div>
+        <label>費率折扣（%，無則填 0）</label>
+        <input type="number" id="discount" placeholder="例：10" step="any" value="0">
+      </div>
+    </div>
+    <div class="hint">Maker＝掛單等成交，Taker＝吃單即時成交。習慣市價進出的人 Maker 比例填 0。折扣指平台幣抵扣或返佣後的減免。</div>
+  </div>
+
+  <div class="card">
+    <h2>交易頻率</h2>
+    <div class="row">
+      <div>
+        <label>每週交易筆數</label>
+        <input type="number" id="perWeek" placeholder="例：5" step="any" value="5">
+      </div>
+      <div>
+        <label>一年交易週數</label>
+        <input type="number" id="weeks" placeholder="例：50" step="any" value="50">
+      </div>
+    </div>
+    <div class="hint">一筆＝一次完整的來回（開倉＋平倉），兩邊都要收費。扣掉休假與空手期，一年抓 45–50 週比 52 週實際。</div>
+  </div>
+
+  <div class="card" id="results" style="display:none">
+    <h2>試算結果</h2>
+    <div class="result-line"><span>有效平均費率（單邊）</span><span class="v" id="effRate"></span></div>
+    <div class="result-line"><span>每筆來回手續費</span><span class="v" id="perTrade"></span></div>
+    <div class="result-line"><span>每月手續費</span><span class="v" id="perMonth"></span></div>
+    <div class="result-line"><span>每年手續費</span><span class="v big" id="perYear"></span></div>
+    <div class="result-line"><span>年度手續費占本金</span><span class="v" id="pctEquity"></span></div>
+    <div class="result-line"><span>年交易筆數 / 名目成交量</span><span class="v" id="volume"></span></div>
+    <div class="result-line"><span>打平手續費所需年報酬</span><span class="v" id="breakeven"></span></div>
+    <div class="result-line"><span>每筆成本相當於本金</span><span class="v" id="perTradePct"></span></div>
+    <div class="warn" id="warn"></div>
+  </div>
+
+  <div class="card" id="freqCard" style="display:none">
+    <h2>不同頻率對照</h2>
+    <table>
+      <thead>
+        <tr><th>每週筆數</th><th>年手續費</th><th>占本金</th></tr>
+      </thead>
+      <tbody id="freqBody"></tbody>
+    </table>
+    <div class="hint">同樣的策略、同樣的費率，只是交易更頻繁——這欄的差距就是「手癢」的年度標價。</div>
+  </div>
+
+  <div class="card">
+    <div class="hint">
+      公式：單邊費率 = (Maker 費率 × Maker 比例 + Taker 費率 × Taker 比例) × (1 − 折扣)；
+      每筆來回手續費 = 名目部位 × 單邊費率 × 2。<br><br>
+      手續費是少數你 100% 控制得了的變數：策略勝率控制不了，但掛單改用限價、把每週 10 筆砍到 5 筆，
+      省下來的是確定的錢。當年度手續費逼近或超過你的預期報酬時，問題往往不是策略不好，而是交易太頻繁。
+    </div>
+  </div>
+
+  <div class="footer">
+    Trading Toolkit · MIT License · 僅供學習參考，不構成投資建議
+  </div>
+
+<script>
+  const $ = id => document.getElementById(id);
+  const IDS = ['equity', 'notional', 'makerFee', 'takerFee', 'makerRatio', 'discount', 'perWeek', 'weeks'];
+  IDS.forEach(id => $(id).addEventListener('input', calc));
+
+  const usd = n => '$' + n.toLocaleString('en-US', { maximumFractionDigits: 2 });
+  const pct = (n, d) => n.toLocaleString('en-US', { maximumFractionDigits: d ?? 2 }) + '%';
+
+  function calc() {
+    const v = {};
+    IDS.forEach(id => v[id] = parseFloat($(id).value));
+
+    const valid = isFinite(v.equity) && v.equity > 0
+      && isFinite(v.notional) && v.notional > 0
+      && isFinite(v.makerFee) && v.makerFee >= 0
+      && isFinite(v.takerFee) && v.takerFee >= 0
+      && isFinite(v.makerRatio) && v.makerRatio >= 0 && v.makerRatio <= 100
+      && isFinite(v.discount) && v.discount >= 0 && v.discount < 100
+      && isFinite(v.perWeek) && v.perWeek >= 0
+      && isFinite(v.weeks) && v.weeks > 0;
+
+    if (!valid) {
+      $('results').style.display = 'none';
+      $('freqCard').style.display = 'none';
+      return;
+    }
+    $('results').style.display = 'block';
+    $('freqCard').style.display = 'block';
+
+    const mr = v.makerRatio / 100;
+    const effRate = (v.makerFee * mr + v.takerFee * (1 - mr)) * (1 - v.discount / 100) / 100; // 小數
+    const perTrade = v.notional * effRate * 2;      // 來回兩邊
+    const tradesYear = v.perWeek * v.weeks;
+    const yearFee = perTrade * tradesYear;
+    const monthFee = yearFee / 12;
+    const pctEq = yearFee / v.equity * 100;
+
+    $('effRate').textContent = pct(effRate * 100, 4);
+    $('perTrade').textContent = usd(perTrade);
+    $('perMonth').textContent = usd(monthFee);
+    $('perYear').textContent = usd(yearFee);
+
+    const pctEl = $('pctEquity');
+    pctEl.textContent = pct(pctEq);
+    pctEl.className = 'v ' + (pctEq >= 20 ? 'neg' : '');
+
+    $('volume').textContent = tradesYear.toLocaleString('en-US', { maximumFractionDigits: 0 })
+      + ' 筆 / ' + usd(v.notional * tradesYear * 2);
+    $('breakeven').textContent = '+' + pct(pctEq);
+    $('perTradePct').textContent = pct(perTrade / v.equity * 100, 3);
+
+    const warn = $('warn');
+    if (pctEq >= 30) {
+      warn.className = 'warn red';
+      warn.textContent = '⚠ 手續費一年吃掉本金的 ' + pct(pctEq, 1)
+        + '。這個量級下，多數策略的邊際優勢會被費用完全抵銷——優先砍頻率或改掛限價，而不是加大槓桿去追。';
+    } else if (pctEq >= 10) {
+      warn.className = 'warn yellow';
+      warn.textContent = '⚠ 年度手續費占本金 ' + pct(pctEq, 1)
+        + '，等於你每年要先賺回這麼多才回到原點。檢查一下是不是有可以省掉的交易。';
+    } else {
+      warn.className = 'warn';
+      warn.textContent = '';
+    }
+
+    // 不同頻率對照表
+    const freqs = [1, 3, 5, 10, 20, 40];
+    if (!freqs.includes(v.perWeek) && v.perWeek > 0) freqs.push(v.perWeek);
+    freqs.sort((a, b) => a - b);
+
+    $('freqBody').innerHTML = freqs.map(f => {
+      const y = perTrade * f * v.weeks;
+      const p = y / v.equity * 100;
+      const cls = (f === v.perWeek) ? ' class="me"' : '';
+      return '<tr' + cls + '><td>' + f + ' 筆</td><td>' + usd(y) + '</td><td>' + pct(p, 1) + '</td></tr>';
+    }).join('');
+  }
+
+  calc();
+</script>
+</body>
+</html>

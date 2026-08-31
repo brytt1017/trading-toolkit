@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>滑點與停損緩衝計算器 | Trading Toolkit</title>
+<style>
+  :root {
+    --bg: #0f1115; --card: #181b21; --border: #2a2e37;
+    --text: #e7e9ee; --muted: #9aa1ad; --accent: #4f8cff;
+    --green: #2ecc71; --red: #e74c3c; --yellow: #f1c40f;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'Noto Sans TC', -apple-system, sans-serif;
+    background: var(--bg); color: var(--text);
+    max-width: 560px; margin: 0 auto; padding: 32px 16px 64px;
+    line-height: 1.6;
+  }
+  h1 { font-size: 22px; margin-bottom: 4px; }
+  .sub { color: var(--muted); font-size: 13px; margin-bottom: 24px; }
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 20px; margin-bottom: 16px; }
+  .card h2 { font-size: 14px; color: var(--muted); font-weight: 600; margin-bottom: 12px; }
+  label { display: block; font-size: 13px; color: var(--muted); margin: 12px 0 4px; }
+  label:first-child { margin-top: 0; }
+  input {
+    width: 100%; padding: 10px 12px; font-size: 16px;
+    background: var(--bg); color: var(--text);
+    border: 1px solid var(--border); border-radius: 8px;
+  }
+  input:focus { outline: none; border-color: var(--accent); }
+  .row { display: flex; gap: 12px; }
+  .row > div { flex: 1; }
+  .side { display: flex; gap: 8px; }
+  .side button {
+    flex: 1; padding: 10px; font-size: 14px; font-family: inherit; cursor: pointer;
+    background: var(--bg); color: var(--muted);
+    border: 1px solid var(--border); border-radius: 8px;
+  }
+  .side button.on { color: var(--text); border-color: var(--accent); background: #1d2635; font-weight: 600; }
+  .toggle { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); margin-top: 14px; cursor: pointer; }
+  .toggle input { width: auto; }
+  .result-line { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid var(--border); font-size: 14px; gap: 12px; }
+  .result-line:last-child { border-bottom: none; }
+  .result-line .v { font-weight: 600; text-align: right; white-space: nowrap; }
+  .big { font-size: 20px; color: var(--accent); }
+  .pos { color: var(--green); }
+  .neg { color: var(--red); }
+  .warn { font-size: 13px; margin-top: 10px; }
+  .warn.red { color: var(--red); }
+  .warn.yellow { color: var(--yellow); }
+  .hint { color: var(--muted); font-size: 12px; margin-top: 10px; }
+  .footer { color: var(--muted); font-size: 12px; margin-top: 24px; text-align: center; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { padding: 7px 4px; border-bottom: 1px solid var(--border); text-align: right; }
+  th:first-child, td:first-child { text-align: left; }
+  th { color: var(--muted); font-weight: 500; }
+  tr.me td { color: var(--accent); font-weight: 600; }
+</style>
+</head>
+<body>
+  <h1>滑點與停損緩衝計算器</h1>
+  <div class="sub">市價停損被觸發時，你實際賠的通常比計畫多。算出多賠多少，以及該怎麼補償。所有計算都在你的瀏覽器本機執行。</div>
+
+  <div class="card">
+    <h2>方向</h2>
+    <div class="side">
+      <button id="btnLong" class="on" type="button">做多 Long</button>
+      <button id="btnShort" type="button">做空 Short</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>部位</h2>
+    <div class="row">
+      <div>
+        <label>帳戶資金（USD）</label>
+        <input type="number" id="equity" placeholder="例：10000" step="any" value="10000">
+      </div>
+      <div>
+        <label>部位數量（顆／股／口）</label>
+        <input type="number" id="qty" placeholder="例：0.5" step="any" value="0.5">
+      </div>
+    </div>
+    <div class="row">
+      <div>
+        <label>計畫進場價</label>
+        <input type="number" id="entry" placeholder="例：60000" step="any" value="60000">
+      </div>
+      <div>
+        <label>計畫停損價</label>
+        <input type="number" id="stop" placeholder="例：58800" step="any" value="58800">
+      </div>
+    </div>
+    <div class="hint">停損價要在進場價的虧損側：做多時低於進場價，做空時高於進場價。</div>
+  </div>
+
+  <div class="card">
+    <h2>滑點假設</h2>
+    <div class="row">
+      <div>
+        <label>出場滑點（%，單邊）</label>
+        <input type="number" id="slipOut" placeholder="例：0.15" step="any" value="0.15">
+      </div>
+      <div>
+        <label>進場滑點（%，單邊）</label>
+        <input type="number" id="slipIn" placeholder="例：0.05" step="any" value="0.05">
+      </div>
+    </div>
+    <label class="toggle"><input type="checkbox" id="limitEntry"> 我用限價單進場（進場無滑點）</label>
+    <div class="hint">
+      停損單被觸發時是以市價成交，所以出場滑點通常比進場大。流動性好的大幣／權值股平常約 0.02–0.1%，
+      數據公布、跳空、爆量時可以到 0.5% 以上。抓保守一點比較安全。
+    </div>
+  </div>
+
+  <div class="card" id="results" style="display:none">
+    <h2>實際 vs 計畫</h2>
+    <div class="result-line"><span>實際進場成交價</span><span class="v" id="entryFill"></span></div>
+    <div class="result-line"><span>實際停損成交價</span><span class="v" id="stopFill"></span></div>
+    <div class="result-line"><span>計畫虧損</span><span class="v" id="plannedLoss"></span></div>
+    <div class="result-line"><span>實際虧損</span><span class="v big" id="actualLoss"></span></div>
+    <div class="result-line"><span>多賠的金額</span><span class="v neg" id="extraLoss"></span></div>
+    <div class="result-line"><span>風險放大倍數</span><span class="v" id="multiplier"></span></div>
+    <div class="result-line"><span>計畫風險 ／ 實際風險（占本金）</span><span class="v" id="riskPct"></span></div>
+    <div class="result-line"><span>實際 R 值（1R 縮水成）</span><span class="v" id="realR"></span></div>
+    <div class="warn" id="warn"></div>
+  </div>
+
+  <div class="card" id="fixCard" style="display:none">
+    <h2>兩種補償做法</h2>
+    <div class="result-line"><span>① 縮小部位至</span><span class="v" id="fixQty"></span></div>
+    <div class="result-line"><span>　　縮減幅度</span><span class="v" id="fixQtyPct"></span></div>
+    <div class="result-line"><span>② 停損價往內收至</span><span class="v" id="fixStop"></span></div>
+    <div class="result-line"><span>　　需要的緩衝距離</span><span class="v" id="fixStopGap"></span></div>
+    <div class="hint">
+      兩種做法都能讓「實際虧損 = 原本計畫的虧損」，但代價不同：<br>
+      ① 縮小部位＝停損位置不動，被洗掉的機率不變，但獲利也等比例縮小。<br>
+      ② 停損往內收＝部位大小不動，但停損更接近進場價，更容易被正常波動掃到。<br>
+      短線、停損本來就很窄的單，通常選 ①；停損寬、部位又已經壓到最小單位的，才考慮 ②。
+    </div>
+  </div>
+
+  <div class="card" id="scenCard" style="display:none">
+    <h2>不同滑點情境</h2>
+    <table>
+      <thead>
+        <tr><th>出場滑點</th><th>實際虧損</th><th>占本金</th><th>放大</th></tr>
+      </thead>
+      <tbody id="scenBody"></tbody>
+    </table>
+    <div class="hint">
+      同一張單，差別只在成交當下市場有多亂。停損越窄，同樣的滑點造成的放大倍數越誇張——
+      這就是為什麼「停損設超近」不等於「風險超小」。
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="hint">
+      公式（做多）：實際進場價 = 進場價 ×(1＋進場滑點)，實際停損成交價 = 停損價 ×(1−出場滑點)；
+      實際虧損 = (實際進場價 − 實際停損成交價) × 數量。做空方向相反。<br><br>
+      重點不是滑點本身，而是<strong>你以為在冒 1% 的風險，實際上冒的是 1.3%</strong>。
+      幾十筆累積下來，帳戶曲線跟回測對不上，多半就是差在這裡。把滑點寫進計畫，風險才是你控制的數字。
+    </div>
+  </div>
+
+  <div class="footer">
+    Trading Toolkit · MIT License · 僅供學習參考，不構成投資建議
+  </div>
+
+<script>
+  const $ = id => document.getElementById(id);
+  const IDS = ['equity', 'qty', 'entry', 'stop', 'slipOut', 'slipIn'];
+  let side = 'long';
+
+  IDS.forEach(id => $(id).addEventListener('input', calc));
+  $('limitEntry').addEventListener('change', () => {
+    $('slipIn').disabled = $('limitEntry').checked;
+    calc();
+  });
+  $('btnLong').addEventListener('click', () => setSide('long'));
+  $('btnShort').addEventListener('click', () => setSide('short'));
+
+  function setSide(s) {
+    side = s;
+    $('btnLong').classList.toggle('on', s === 'long');
+    $('btnShort').classList.toggle('on', s === 'short');
+    calc();
+  }
+
+  const usd = n => '$' + n.toLocaleString('en-US', { maximumFractionDigits: 2 });
+  const px = n => n.toLocaleString('en-US', { maximumFractionDigits: 6 });
+  const pct = (n, d) => n.toLocaleString('en-US', { maximumFractionDigits: d ?? 2 }) + '%';
+
+  // 回傳指定出場滑點下的 { entryFill, stopFill, riskPerUnit, loss }
+  function simulate(v, slipOut, sIn) {
+    const so = slipOut / 100, si = sIn / 100;
+    let entryFill, stopFill;
+    if (side === 'long') {
+      entryFill = v.entry * (1 + si);   // 買進買貴
+      stopFill  = v.stop  * (1 - so);   // 賣出賣低
+    } else {
+      entryFill = v.entry * (1 - si);   // 放空空低
+      stopFill  = v.stop  * (1 + so);   // 回補買高
+    }
+    const riskPerUnit = side === 'long' ? (entryFill - stopFill) : (stopFill - entryFill);
+    return { entryFill, stopFill, riskPerUnit, loss: riskPerUnit * v.qty };
+  }
+
+  function calc() {
+    const v = {};
+    IDS.forEach(id => v[id] = parseFloat($(id).value));
+    if ($('limitEntry').checked) v.slipIn = 0;
+
+    const dirOK = side === 'long' ? (v.stop < v.entry) : (v.stop > v.entry);
+    const valid = isFinite(v.equity) && v.equity > 0
+      && isFinite(v.qty) && v.qty > 0
+      && isFinite(v.entry) && v.entry > 0
+      && isFinite(v.stop) && v.stop > 0 && dirOK
+      && isFinite(v.slipOut) && v.slipOut >= 0 && v.slipOut < 100
+      && isFinite(v.slipIn) && v.slipIn >= 0 && v.slipIn < 100;
+
+    if (!valid) {
+      ['results', 'fixCard', 'scenCard'].forEach(id => $(id).style.display = 'none');
+      return;
+    }
+    ['results', 'fixCard', 'scenCard'].forEach(id => $(id).style.display = 'block');
+
+    const plannedPerUnit = Math.abs(v.entry - v.stop);
+    const plannedLoss = plannedPerUnit * v.qty;
+
+    const r = simulate(v, v.slipOut, v.slipIn);
+    const extra = r.loss - plannedLoss;
+    const mult = r.loss / plannedLoss;
+
+    $('entryFill').textContent = px(r.entryFill);
+    $('stopFill').textContent = px(r.stopFill);
+    $('plannedLoss').textContent = usd(plannedLoss) + '（' + pct(plannedLoss / v.equity * 100) + '）';
+    $('actualLoss').textContent = usd(r.loss);
+    $('extraLoss').textContent = '+' + usd(extra) + '（+' + pct(extra / v.equity * 100) + ' 本金）';
+    $('multiplier').textContent = mult.toFixed(2) + 'x';
+    $('riskPct').textContent = pct(plannedLoss / v.equity * 100) + ' → ' + pct(r.loss / v.equity * 100);
+    $('realR').textContent = (1 / mult).toFixed(2) + 'R';
+
+    const warn = $('warn');
+    if (mult >= 1.5) {
+      warn.className = 'warn red';
+      warn.textContent = '⚠ 實際風險是計畫的 ' + mult.toFixed(2)
+        + ' 倍。這個量級下你的 R 已經失真——每筆賺 2R 其實只有 ' + (2 / mult).toFixed(2)
+        + 'R，回測再漂亮實盤也對不上。先把停損拉寬或改用流動性更好的標的。';
+    } else if (mult >= 1.2) {
+      warn.className = 'warn yellow';
+      warn.textContent = '⚠ 實際風險比計畫多 ' + pct((mult - 1) * 100, 0)
+        + '。建議直接把部位照下面①縮小，讓實際虧損回到你原本能接受的數字。';
+    } else {
+      warn.className = 'warn';
+      warn.textContent = '';
+    }
+
+    // ① 縮小部位
+    const fixQty = v.qty / mult;
+    $('fixQty').textContent = px(fixQty);
+    $('fixQtyPct').textContent = '−' + pct((1 - fixQty / v.qty) * 100, 1);
+
+    // ② 停損往內收：讓 riskPerUnit 回到 plannedPerUnit
+    const so = v.slipOut / 100;
+    const adjStop = side === 'long'
+      ? (r.entryFill - plannedPerUnit) / (1 - so)
+      : (r.entryFill + plannedPerUnit) / (1 + so);
+    $('fixStop').textContent = px(adjStop);
+    $('fixStopGap').textContent = px(Math.abs(adjStop - v.stop))
+      + '（' + pct(Math.abs(adjStop - v.stop) / v.entry * 100, 3) + ' 價格）';
+
+    // 情境表
+    const slips = [0, 0.05, 0.1, 0.2, 0.3, 0.5];
+    if (!slips.includes(v.slipOut)) slips.push(v.slipOut);
+    slips.sort((a, b) => a - b);
+
+    $('scenBody').innerHTML = slips.map(s => {
+      const sim = simulate(v, s, v.slipIn);
+      const m = sim.loss / plannedLoss;
+      const cls = (s === v.slipOut) ? ' class="me"' : '';
+      return '<tr' + cls + '><td>' + pct(s, 2) + '</td><td>' + usd(sim.loss)
+        + '</td><td>' + pct(sim.loss / v.equity * 100) + '</td><td>' + m.toFixed(2) + 'x</td></tr>';
+    }).join('');
+  }
+
+  calc();
+</script>
+</body>
+</html>

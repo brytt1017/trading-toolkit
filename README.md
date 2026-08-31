@@ -13,6 +13,7 @@
 | 分批進場平均成本計算器 | `tools/average-cost-calculator.html` | 多筆不同價位進場的真實均價、目前損益，以及還要加碼多少才能把均價壓到目標價 |
 | 資金費率換算器 | `tools/funding-rate-calculator.html` | 單期資金費率換算年化成本、持倉期間總費用、占本金比例與打平所需價格變動 |
 | 手續費累積試算器 | `tools/fee-cost-calculator.html` | 用費率與交易頻率算出每筆／每月／每年手續費、占本金比例、打平所需報酬，並附不同頻率的成本對照表 |
+| 滑點與停損緩衝計算器 | `tools/slippage-calculator.html` | 市價停損被觸發時的實際成交價與實際虧損，算出風險放大倍數、R 值失真，並給出「縮小部位」或「停損內收」兩種補償方案 |
 | 交易時區對照表 | `tools/trading-session-clock.html` | ICT Killzone 時段對照紐約／倫敦／台灣時間，自動處理夏令時間並標示進行中的盤 |
 | 複利挑戰追蹤器 | `tools/compound-challenge-tracker.html` | 小資金翻倍挑戰（如 100U → 1000U）的期望值試算與交易紀錄追蹤 |
 
